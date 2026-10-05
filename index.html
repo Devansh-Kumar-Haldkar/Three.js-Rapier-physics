@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Three.js + Rapier FPS Arena</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <!-- HUD Overlay -->
+  <div id="hud">
+    <!-- Dynamic Recoil / Spread Crosshair -->
+    <div id="crosshair">
+      <div class="dot"></div>
+      <div class="line top"></div>
+      <div class="line bottom"></div>
+      <div class="line left"></div>
+      <div class="line right"></div>
+    </div>
+
+    <!-- Center Hitmarker Tick Overlay -->
+    <div id="hitmarker">
+      <div class="hm-line tl"></div>
+      <div class="hm-line tr"></div>
+      <div class="hm-line bl"></div>
+      <div class="hm-line br"></div>
+    </div>
+
+    <!-- Top Left: Stats & Network Diagnostics -->
+    <div class="hud-panel top-left">
+      <div class="panel-header">FPS NETWORK ARENA</div>
+      <div class="stat-row">
+        <span class="stat-label">ROOM:</span>
+        <span class="stat-value"><span id="stat-room">GLOBAL</span> <button id="btn-hud-copy-room" class="btn-hud-copy" title="Copy Room Match Link">🔗</button></span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">NETWORK:</span>
+        <span id="net-badge" class="stat-value badge-airborne">CONNECTING...</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">PING / PEERS:</span>
+        <span class="stat-value"><span id="stat-ping">-- ms</span> • <span id="stat-peers">0</span> online</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">VELOCITY:</span>
+        <span id="stat-speed" class="stat-value">0.00 m/s</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">STATE:</span>
+        <span id="stat-grounded" class="stat-value badge-grounded">GROUNDED</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">POS:</span>
+        <span id="stat-pos" class="stat-value">0, 0, 0</span>
+      </div>
+    </div>
+
+    <!-- Top Right: Live Kill / Damage Feed -->
+    <div id="killfeed" class="killfeed-container"></div>
+
+    <!-- Controls Helper (Below Killfeed) -->
+    <div class="hud-panel controls-panel" id="controls-panel">
+      <div class="panel-header">CONTROLS <span class="hotkey-hint">[H to toggle]</span></div>
+      <ul class="keybind-list">
+        <li><kbd>L-Click</kbd> <span>Fire Active Weapon</span></li>
+        <li><kbd>R-Click</kbd> <span>Toggle 4x Sniper Scope / ADS</span></li>
+        <li><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> <span>Primary / Sec / Heavy Slots</span></li>
+        <li><kbd>Wheel</kbd> <span>Cycle Weapon Slots</span></li>
+        <li><kbd>E</kbd> <span>Swap Weapon at Loot Crate</span></li>
+        <li><kbd>R</kbd> <span>Reload Magazine</span></li>
+        <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span>Move (Vector Accel)</span></li>
+        <li><kbd>Shift</kbd> <span>Sprint (15.0 m/s)</span></li>
+        <li><kbd>Space</kbd> <span>Jump</span></li>
+      </ul>
+    </div>
+
+    <!-- Center Reload Prompt -->
+    <div id="reload-prompt" class="reload-indicator">RELOADING...</div>
+
+    <!-- Top Center: 1v1 Match Scoreboard (First to 5 Kills) -->
+    <div id="match-scoreboard" class="hud-panel match-scoreboard">
+      <div class="team-score team-blue">
+        <div class="team-name" id="score-blue-name">BLUE TEAM</div>
+        <div class="team-points" id="score-blue-val">0</div>
+      </div>
+      <div class="score-center">
+        <div class="score-target">FIRST TO 5 KILLS</div>
+        <div class="score-vs">VS</div>
+        <div class="score-round" id="score-round-val">ROUND 1</div>
+      </div>
+      <div class="team-score team-red">
+        <div class="team-name" id="score-red-name">RED TEAM</div>
+        <div class="team-points" id="score-red-val">0</div>
+      </div>
+    </div>
+
+    <!-- Match Status & Round Banner -->
+    <div id="round-banner" class="round-banner">⚔️ ROUND 1 — FIGHT!</div>
+
+    <!-- 3-Second Respawn Countdown Overlay -->
+    <div id="respawn-overlay" class="respawn-overlay hidden">
+      <div class="respawn-status" id="respawn-status">ELIMINATED</div>
+      <div class="respawn-timer" id="respawn-timer">RESPAWNING IN 3...</div>
+    </div>
+
+    <!-- Fullscreen Damage Flash Effect -->
+    <div id="damage-flash" class="damage-flash"></div>
+
+    <!-- Bottom Left: Health & Stamina Meters -->
+    <div class="hud-panel bottom-left">
+      <div class="meter-container health-meter-box">
+        <div class="meter-label">HEALTH: <span id="stat-health" class="health-val">100</span> HP</div>
+        <div class="meter-bar-bg">
+          <div id="health-bar-fill" class="meter-bar-fill health-fill"></div>
+        </div>
+      </div>
+      <div class="meter-container">
+        <div class="meter-label">SPRINT STAMINA</div>
+        <div class="meter-bar-bg">
+          <div id="stamina-bar" class="meter-bar-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Right: Weapon & Ammo Display -->
+    <div class="hud-panel bottom-right">
+      <div class="weapon-info">
+        <div class="weapon-name">AR-X PULSE RIFLE</div>
+        <div class="weapon-type">AUTOMATIC • 600 RPM</div>
+      </div>
+      <div class="ammo-display">
+        <span id="stat-ammo" class="ammo-current">30</span>
+        <span id="stat-reserve" class="ammo-reserve">/ 120</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lobby Overlay UI (Pre-Matchmaking) -->
+  <div id="lobby-overlay">
+    <div class="lobby-card">
+      <div class="title-badge">MULTIPLAYER 1V1 MATCHMAKER</div>
+      <h1>TACTICAL ARENA LOBBY</h1>
+      <p class="subtitle">Select your combat mode, host a private match with shareable link, or join an opponent's room.</p>
+
+      <!-- Game Mode Selector -->
+      <div class="mode-selector-section">
+        <div class="mode-selector-title">SELECT GAME MODE</div>
+        <div class="mode-selector-grid">
+          <div class="mode-card active" data-mode="tdm" id="mode-card-tdm">
+            <div class="mode-icon">🏆</div>
+            <div class="mode-info">
+              <div class="mode-name">TEAM DEATHMATCH</div>
+              <div class="mode-desc">4v4 • Target 50 Kills • Fast Respawns</div>
+            </div>
+            <div class="mode-badge">ACTIVE</div>
+          </div>
+          <div class="mode-card" data-mode="clash" id="mode-card-clash">
+            <div class="mode-icon">⚔️</div>
+            <div class="mode-info">
+              <div class="mode-name">CLASH SQUAD</div>
+              <div class="mode-desc">First to 4 Rounds • 15s Freeze • No Respawns</div>
+            </div>
+            <div class="mode-badge">SELECT</div>
+          </div>
+          <div class="mode-card" data-mode="br" id="mode-card-br">
+            <div class="mode-icon">🌀</div>
+            <div class="mode-info">
+              <div class="mode-name">BATTLE ROYALE</div>
+              <div class="mode-desc">Shrinking Storm Zone • Safe Ring • Survival</div>
+            </div>
+            <div class="mode-badge">SELECT</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Environment Map Selector -->
+      <div class="mode-selector-section map-selector-section">
+        <div class="mode-selector-title">SELECT MAP ENVIRONMENT</div>
+        <div class="mode-selector-grid">
+          <div class="mode-card map-card active" data-map="desert" id="map-card-desert">
+            <div class="mode-icon">🏜️</div>
+            <div class="mode-info">
+              <div class="mode-name">DESERT OUTPOST</div>
+              <div class="mode-desc">Sand Dunes • #fff1d0 Sun • Palm Trees • Canyon Barricades</div>
+            </div>
+            <div class="mode-badge map-badge">ACTIVE</div>
+          </div>
+          <div class="mode-card map-card" data-map="jungle" id="map-card-jungle">
+            <div class="mode-icon">🌴</div>
+            <div class="mode-info">
+              <div class="mode-name">OVERGROWN JUNGLE</div>
+              <div class="mode-desc">Rolling Grass Hills • Mossy Rocks • Tree Cover • Mist Rain</div>
+            </div>
+            <div class="mode-badge map-badge">SELECT</div>
+          </div>
+          <div class="mode-card map-card" data-map="neon" id="map-card-neon">
+            <div class="mode-icon">🌆</div>
+            <div class="mode-info">
+              <div class="mode-name">NEON CITY</div>
+              <div class="mode-desc">2-Story Buildings • Walkable Stairs/Rooftops • Night Sky</div>
+            </div>
+            <div class="mode-badge map-badge">SELECT</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lobby-grid">
+        <!-- Host Card -->
+        <div class="lobby-action-box">
+          <div class="action-header">
+            <div class="action-icon">⚔️</div>
+            <div class="action-title">Host 1v1 Match</div>
+          </div>
+          <p class="action-desc">Generates a private 6-character room code and match link with 60Hz authoritative physics.</p>
+          
+          <button id="btn-host-match" class="btn-lobby btn-lobby-primary">
+            <span>HOST 1V1 MATCH</span>
+          </button>
+
+          <!-- Host Details Box (Appears after hosting) -->
+          <div id="host-details-card" class="host-details hidden">
+            <div class="room-code-badge">
+              <span class="code-lbl">ROOM CODE</span>
+              <span id="display-room-code" class="code-val">------</span>
+            </div>
+            
+            <div class="host-actions">
+              <button id="btn-copy-link" class="btn-lobby btn-lobby-copy">
+                <span>📋 COPY MATCH LINK</span>
+              </button>
+              <button id="btn-enter-hosted" class="btn-lobby btn-lobby-enter">
+                <span>ENTER ARENA</span>
+              </button>
+            </div>
+            <div id="copy-feedback" class="copy-feedback">✓ Match link copied to clipboard!</div>
+          </div>
+        </div>
+
+        <!-- Join Card -->
+        <div class="lobby-action-box">
+          <div class="action-header">
+            <div class="action-icon">🚪</div>
+            <div class="action-title">Join Match</div>
+          </div>
+          <p class="action-desc">Enter an opponent's 6-character room code to connect directly to their private 1v1 arena.</p>
+
+          <div class="join-group">
+            <input type="text" id="input-join-code" class="lobby-input" placeholder="ROOM CODE (e.g. X8K2M9)" maxlength="8" autocomplete="off" spellcheck="false" />
+            <button id="btn-join-match" class="btn-lobby btn-lobby-secondary">
+              <span>JOIN MATCH</span>
+            </button>
+          </div>
+          <div id="join-error" class="join-error-msg hidden"></div>
+        </div>
+
+        <!-- Offline Practice & Lobby Filler Card -->
+        <div class="lobby-action-box practice-box">
+          <div class="action-header">
+            <div class="action-icon">🤖</div>
+            <div class="action-title">Offline Practice & Bot Fill</div>
+          </div>
+          <p class="action-desc" id="practice-desc">Instantly populate all remaining open slots with tactical AI bots (e.g. 4v4 TDM with 7 bots) without waiting for peer connections.</p>
+          
+          <div class="practice-controls">
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggle-practice-mode" checked />
+              <span class="slider"></span>
+              <span class="toggle-label" id="toggle-label-text">Offline Practice: ON</span>
+            </label>
+            <button id="btn-start-practice" class="btn-lobby btn-lobby-practice">
+              <span>START OFFLINE PRACTICE</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="lobby-footer">
+        <span>💡 Authoritative 60Hz Physics • 20Hz Snapshot Broadcasts • Linear Peer Interpolation</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dedicated 'Connecting to Host...' Loading Screen Overlay -->
+  <div id="connecting-overlay" class="connecting-overlay hidden">
+    <div class="connecting-card">
+      <div class="connecting-radar-box">
+        <div class="radar-ping"></div>
+        <div class="radar-scan"></div>
+        <div class="connecting-icon">🛰️</div>
+      </div>
+
+      <div class="connecting-badge">WEBRTC P2P HANDSHAKE</div>
+      <h2 id="connecting-title">CONNECTING TO HOST...</h2>
+      <div class="connecting-room-chip">ROOM CODE: <span id="connecting-room-code">------</span></div>
+
+      <div class="connecting-progress-bar-wrap">
+        <div id="connecting-progress-bar" class="connecting-progress-bar"></div>
+      </div>
+
+      <div id="connecting-status-text" class="connecting-status-msg">
+        Querying STUN/TURN ICE Candidates (stun:stun.l.google.com:19302)...
+      </div>
+
+      <div class="connecting-tips">
+        <span>🔒 Public STUN/TURN NAT Traversal • 45ms Hermite Snapshot Interpolation</span>
+      </div>
+
+      <button id="btn-cancel-connecting" class="btn-cancel-connecting">
+        <span>CANCEL & RETURN TO LOBBY</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- In-Game Pause / Blocker Overlay -->
+  <div id="blocker" class="hidden">
+    <div id="instructions">
+      <div class="title-badge">AUTHORITATIVE NODE.JS NETWORK</div>
+      <h1>FPS MATCH IN PROGRESS</h1>
+      <p class="subtitle">Click below to resume pointer lock control.</p>
+
+      <button id="play-button" class="btn-primary">
+        <span class="btn-text">CLICK TO RESUME ARENA</span>
+        <span class="btn-subtext">Locks mouse cursor for FPS control</span>
+      </button>
+
+      <div class="footer-tip">Press <kbd>ESC</kbd> anytime to unlock the cursor.</div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
